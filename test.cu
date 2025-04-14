@@ -103,8 +103,14 @@ int main() {
                                      10, 10, win_width, win_height, 1,
                                      BlackPixel(display, screen),
                                      WhitePixel(display, screen));
+
+    XSelectInput(display, win, StructureNotifyMask);
     XMapWindow(display, win);
-    XFlush(display);
+    for (;;) {
+        XEvent e;
+        XNextEvent(display, &e);
+        if (e.type == MapNotify) break;
+    }
 
     GC gc = XCreateGC(display, win, 0, NULL);
     draw_grayscale(display, win, gc, visual, depth, img_data, width, height, 0);

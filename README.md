@@ -13,3 +13,5 @@ X11 lib to access /dev/fb0
 
 ioctl() for device access
 v4l2 to talk /dev/video0
+
+https://learn.microsoft.com/en-us/windows/wsl/connect-usb 

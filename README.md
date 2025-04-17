@@ -15,3 +15,5 @@ ioctl() for device access
 v4l2 to talk /dev/video0
 
 https://learn.microsoft.com/en-us/windows/wsl/connect-usb 
+
+usbipd attach --wsl --busid <busid>

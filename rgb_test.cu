@@ -1,5 +1,5 @@
 #define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#include "stb_image.cuh"
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>

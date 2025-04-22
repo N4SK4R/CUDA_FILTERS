@@ -8,9 +8,37 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "filters.cuh"
+
 int filter_radius = 1;
+int filter_type = FILTER_BLUR;
 pthread_mutex_t filter_lock = PTHREAD_MUTEX_INITIALIZER;
 int update_requested = 1;
+
+__global__ void gpu_sepia(float *r_in, float *g_in, float *b_in,float *r_out, float *g_out, float *b_out,int width, int height) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int i = y * width + x;
+
+    if (x < width && y < height) {
+        float r0 = r_in[i], g0 = g_in[i], b0 = b_in[i];
+        r_out[i] = fminf(r0 * 0.393f + g0 * 0.769f + b0 * 0.189f, 1.0f);
+        g_out[i] = fminf(r0 * 0.349f + g0 * 0.686f + b0 * 0.168f, 1.0f);
+        b_out[i] = fminf(r0 * 0.272f + g0 * 0.534f + b0 * 0.131f, 1.0f);
+    }
+}
+
+__global__ void gpu_invert(float *r_in, float *g_in, float *b_in,float *r_out, float *g_out, float *b_out,int width, int height) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int i = y * width + x;
+
+    if (x < width && y < height) {
+        r_out[i] = 1.0f - r_in[i];
+        g_out[i] = 1.0f - g_in[i];
+        b_out[i] = 1.0f - b_in[i];
+    }
+}
 
 __global__ void gpu_conv2d_kernel(float const *d_N_ptr, float const *d_F_ptr, float *d_P_ptr, int n_rows, int n_cols, int filter_radius) {
     int out_col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -40,22 +68,40 @@ void *cli_thread(void *arg) {
     while (1) {
         
         if (fgets(cmd, sizeof(cmd), stdin)) {
+
+            pthread_mutex_lock(&filter_lock);
             int r;
             if (sscanf(cmd, "%d", &r) == 1 && r >= 0 && r <= 10) {
-                pthread_mutex_lock(&filter_lock);
+                
                 filter_radius = r;
+                filter_type = FILTER_BLUR;
                 update_requested = 1;
-                pthread_mutex_unlock(&filter_lock);
+                
             } 
-            else if (strncmp(cmd, "exit", 4) == 0) 
-            {
-                pthread_mutex_lock(&filter_lock);
-                update_requested = 2;
-                pthread_mutex_unlock(&filter_lock); 
+            else if (strncmp(cmd, "edge", 4) == 0) {
+                filter_type = FILTER_EDGE;
+                filter_radius = 1;
+                update_requested = 1;
             }
-            
-            else printf("Invalid, use <0-10>\n");
-            
+            else if (strncmp(cmd, "emboss", 6) == 0) {
+                filter_type = FILTER_EMBOSS;
+                filter_radius = 1;
+                update_requested = 1;
+            }
+            else if (strncmp(cmd, "invert", 6) == 0) {
+                filter_type = FILTER_INVERT;
+                filter_radius = 1;
+                update_requested = 1;
+            }
+            else if (strncmp(cmd, "sepia", 5) == 0) {
+                filter_type = FILTER_SEPIA;
+                filter_radius = 1;
+                update_requested = 1;
+            }
+            else if (strncmp(cmd, "exit", 4) == 0) update_requested = 2;
+
+            else printf("Invalid");
+            pthread_mutex_unlock(&filter_lock);
         }
     }
     return NULL;
@@ -76,14 +122,6 @@ void draw_rgb(Display *display, Window win, GC gc, Visual *visual, int depth, un
     }
     XPutImage(display, win, gc, img, 0, 0, x_offset, 0, w, h);
     XDestroyImage(img);
-}
-
-void generate_blur_filter(float *filter, int radius) {
-    int size = 2 * radius + 1;
-    float val = 1.0f / (size * size);
-    for (int i = 0; i < size * size; ++i) {
-        filter[i] = val;
-    }
 }
 
 int main(int argc, char **argv) {
@@ -146,13 +184,11 @@ int main(int argc, char **argv) {
     int win_height = height;
 
     Window win = XCreateSimpleWindow(display, RootWindow(display, screen),
-                                     10, 10, win_width, win_height, 1,
-                                     BlackPixel(display, screen),
-                                     WhitePixel(display, screen));
-
+                                    10, 10, win_width, win_height, 1,
+                                    BlackPixel(display, screen),
+                                    WhitePixel(display, screen));
 
     XMapWindow(display, win);
-
     GC gc = XCreateGC(display, win, 0, NULL);
     
     while (1) {
@@ -163,21 +199,31 @@ int main(int argc, char **argv) {
 
             pthread_mutex_lock(&filter_lock);
             int r = filter_radius;
+            int type = filter_type;
             update_requested = 0;
             pthread_mutex_unlock(&filter_lock);
 
             int fsize = (2 * r + 1);
             int filter_len = fsize * fsize;
             float *h_filter = (float *)malloc(filter_len * sizeof(float));
-            generate_blur_filter(h_filter, r);
+            choose_filter(h_filter, r, type);
 
             float *d_filter;
             cudaMalloc(&d_filter, filter_len * sizeof(float));
             cudaMemcpy(d_filter, h_filter, filter_len * sizeof(float), cudaMemcpyHostToDevice);
 
-            gpu_conv2d_kernel<<<grid, block>>>(d_r_in, d_filter, d_r_out, height, width, r);
-            gpu_conv2d_kernel<<<grid, block>>>(d_g_in, d_filter, d_g_out, height, width, r);
-            gpu_conv2d_kernel<<<grid, block>>>(d_b_in, d_filter, d_b_out, height, width, r);
+            if (filter_type == FILTER_SEPIA) 
+            gpu_sepia<<<grid, block>>>(d_r_in, d_g_in, d_b_in, d_r_out, d_g_out, d_b_out, width, height);
+
+            else if (filter_type == FILTER_INVERT) 
+            gpu_invert<<<grid, block>>>(d_r_in, d_g_in, d_b_in, d_r_out, d_g_out, d_b_out, width, height);
+             
+            else 
+            {
+                gpu_conv2d_kernel<<<grid, block>>>(d_r_in, d_filter, d_r_out, height, width, r);
+                gpu_conv2d_kernel<<<grid, block>>>(d_g_in, d_filter, d_g_out, height, width, r);
+                gpu_conv2d_kernel<<<grid, block>>>(d_b_in, d_filter, d_b_out, height, width, r);
+            }
             cudaDeviceSynchronize();
 
             cudaMemcpy(h_r_out, d_r_out, size, cudaMemcpyDeviceToHost);

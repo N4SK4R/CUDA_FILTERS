@@ -17,3 +17,5 @@ v4l2 to talk /dev/video0
 https://learn.microsoft.com/en-us/windows/wsl/connect-usb 
 
 usbipd attach --wsl --busid <busid>
+
+nvcc rgb_test.cu -lX11 -o cli_test

@@ -8,104 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "filters.cuh"
-
-int filter_radius = 1;
-int filter_type = FILTER_BLUR;
-pthread_mutex_t filter_lock = PTHREAD_MUTEX_INITIALIZER;
-int update_requested = 1;
-
-__global__ void gpu_sepia(float *r_in, float *g_in, float *b_in,float *r_out, float *g_out, float *b_out,int width, int height) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    int i = y * width + x;
-
-    if (x < width && y < height) {
-        float r0 = r_in[i], g0 = g_in[i], b0 = b_in[i];
-        r_out[i] = fminf(r0 * 0.393f + g0 * 0.769f + b0 * 0.189f, 1.0f);
-        g_out[i] = fminf(r0 * 0.349f + g0 * 0.686f + b0 * 0.168f, 1.0f);
-        b_out[i] = fminf(r0 * 0.272f + g0 * 0.534f + b0 * 0.131f, 1.0f);
-    }
-}
-
-__global__ void gpu_invert(float *r_in, float *g_in, float *b_in,float *r_out, float *g_out, float *b_out,int width, int height) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    int i = y * width + x;
-
-    if (x < width && y < height) {
-        r_out[i] = 1.0f - r_in[i];
-        g_out[i] = 1.0f - g_in[i];
-        b_out[i] = 1.0f - b_in[i];
-    }
-}
-
-__global__ void gpu_conv2d_kernel(float const *d_N_ptr, float const *d_F_ptr, float *d_P_ptr, int n_rows, int n_cols, int filter_radius) {
-    int out_col = blockIdx.x * blockDim.x + threadIdx.x;
-    int out_row = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (out_row < n_rows && out_col < n_cols) {
-        float p_val = 0.0f;
-
-        for (int f_row = 0; f_row < 2 * filter_radius + 1; f_row++) {
-            for (int f_col = 0; f_col < 2 * filter_radius + 1; f_col++) {
-                int in_row = out_row + (f_row - filter_radius);
-                int in_col = out_col + (f_col - filter_radius);
-
-                if (in_row >= 0 && in_row < n_rows && in_col >= 0 && in_col < n_cols) {
-                    float pixel = d_N_ptr[in_row * n_cols + in_col];
-                    float filter = d_F_ptr[f_row * (2 * filter_radius + 1) + f_col];
-                    p_val += filter * pixel;
-                }
-            }
-        }
-        d_P_ptr[out_row * n_cols + out_col] = p_val;
-    }
-}
-
-void *cli_thread(void *arg) {
-    char cmd[256];
-    while (1) {
-        
-        if (fgets(cmd, sizeof(cmd), stdin)) {
-
-            pthread_mutex_lock(&filter_lock);
-            int r;
-            if (sscanf(cmd, "%d", &r) == 1 && r >= 0 && r <= 10) {
-                
-                filter_radius = r;
-                filter_type = FILTER_BLUR;
-                update_requested = 1;
-                
-            } 
-            else if (strncmp(cmd, "edge", 4) == 0) {
-                filter_type = FILTER_EDGE;
-                filter_radius = 1;
-                update_requested = 1;
-            }
-            else if (strncmp(cmd, "emboss", 6) == 0) {
-                filter_type = FILTER_EMBOSS;
-                filter_radius = 1;
-                update_requested = 1;
-            }
-            else if (strncmp(cmd, "invert", 6) == 0) {
-                filter_type = FILTER_INVERT;
-                filter_radius = 1;
-                update_requested = 1;
-            }
-            else if (strncmp(cmd, "sepia", 5) == 0) {
-                filter_type = FILTER_SEPIA;
-                filter_radius = 1;
-                update_requested = 1;
-            }
-            else if (strncmp(cmd, "exit", 4) == 0) update_requested = 2;
-
-            else printf("Invalid");
-            pthread_mutex_unlock(&filter_lock);
-        }
-    }
-    return NULL;
-}
+#include "headers/filters.cuh"
+#include "headers/gpu_kernels.cuh"
 
 void draw_rgb(Display *display, Window win, GC gc, Visual *visual, int depth, unsigned char *rgb_data, int w, int h, int x_offset) {
     XImage *img = XCreateImage(display, visual, depth, ZPixmap, 0, NULL, w, h, 32, 0);
@@ -164,7 +68,7 @@ int main(int argc, char **argv) {
     cudaMemcpy(d_b_in, h_b, size, cudaMemcpyHostToDevice);
 
     dim3 block(16, 16);
-    dim3 grid((width + 15) / 16, (height + 15) / 16);
+    dim3 grid(ceil((width)/(float)16),ceil((height)/(float)16));
 
     float *h_r_out = (float *)malloc(size);
     float *h_g_out = (float *)malloc(size);
@@ -215,6 +119,9 @@ int main(int argc, char **argv) {
             if (filter_type == FILTER_SEPIA) 
             gpu_sepia<<<grid, block>>>(d_r_in, d_g_in, d_b_in, d_r_out, d_g_out, d_b_out, width, height);
 
+            else if (filter_type == FILTER_GREY) 
+            rgb_to_grayscale<<<grid, block>>>(d_r_in, d_g_in, d_b_in, d_r_out, d_g_out, d_b_out, width, height);
+
             else if (filter_type == FILTER_INVERT) 
             gpu_invert<<<grid, block>>>(d_r_in, d_g_in, d_b_in, d_r_out, d_g_out, d_b_out, width, height);
              
@@ -245,6 +152,7 @@ int main(int argc, char **argv) {
 
         }
 
+        usleep(100000);
     }
 
     stbi_image_free(img_data);

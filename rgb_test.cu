@@ -116,7 +116,16 @@ int main(int argc, char **argv) {
             cudaMalloc(&d_filter, filter_len * sizeof(float));
             cudaMemcpy(d_filter, h_filter, filter_len * sizeof(float), cudaMemcpyHostToDevice);
 
-            if (filter_type == FILTER_SEPIA) 
+            if (filter_type == FILTER_ORTON) 
+            {   
+                gpu_conv2d_kernel<<<grid, block>>>(d_r_in, d_filter, d_r_out, height, width, r);
+                gpu_conv2d_kernel<<<grid, block>>>(d_g_in, d_filter, d_g_out, height, width, r);
+                gpu_conv2d_kernel<<<grid, block>>>(d_b_in, d_filter, d_b_out, height, width, r);
+
+                orton_kernel<<<grid, block>>>(d_r_in, d_g_in, d_b_in, d_r_out, d_g_out, d_b_out, d_r_out, d_g_out, d_b_out, width, height);
+            }
+            
+            else if (filter_type == FILTER_SEPIA) 
             gpu_sepia<<<grid, block>>>(d_r_in, d_g_in, d_b_in, d_r_out, d_g_out, d_b_out, width, height);
 
             else if (filter_type == FILTER_GREY) 

@@ -1,3 +1,22 @@
+__global__ void orton_kernel(const float *orig_r, const float *orig_g, const float *orig_b, const float *blur_r, const float *blur_g, const float *blur_b,  float *out_r, float *out_g, float *out_b, int width, int height)
+{
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= width || y >= height) return;
+
+    int i = y * width + x;
+
+    // brighten original
+    float bright_r = fminf(orig_r[i] * 1.5f, 1.0f);
+    float bright_g = fminf(orig_g[i] * 1.5f, 1.0f);
+    float bright_b = fminf(orig_b[i] * 1.5f, 1.0f);
+
+    
+    out_r[i] = fminf(bright_r * blur_r[i], 1.0f);
+    out_g[i] = fminf(bright_g * blur_g[i], 1.0f);
+    out_b[i] = fminf(bright_b * blur_b[i], 1.0f);
+}
+   
 __global__ void gpu_sepia(float *r_in, float *g_in, float *b_in,float *r_out, float *g_out, float *b_out,int width, int height) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;

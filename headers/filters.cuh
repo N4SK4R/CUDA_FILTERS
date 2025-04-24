@@ -1,4 +1,4 @@
-enum FilterType { FILTER_BLUR, FILTER_EDGE, FILTER_EMBOSS, FILTER_SEPIA, FILTER_INVERT, FILTER_GREY, FILTER_SKETCH };
+enum FilterType { FILTER_BLUR, FILTER_EDGE, FILTER_EMBOSS, FILTER_SEPIA, FILTER_INVERT, FILTER_GREY, FILTER_ORTON };
 int filter_radius = 1;
 int filter_type = FILTER_BLUR;
 pthread_mutex_t filter_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -31,7 +31,7 @@ void generate_emboss_filter(float *f) {
 
 void choose_filter(float *h_filter, int r, int type){
 
-    if (type == FILTER_BLUR || type == FILTER_SKETCH) generate_blur_filter(h_filter, r);
+    if (type == FILTER_BLUR || type == FILTER_ORTON) generate_blur_filter(h_filter, r);
     
     else if (type == FILTER_EDGE || type == FILTER_EMBOSS) {
 
@@ -81,8 +81,8 @@ void *cli_thread(void *arg) {
                 filter_radius = 1;
                 update_requested = 1;
             }
-            else if (strncmp(cmd, "sketch", 6) == 0) {
-                filter_type = FILTER_SKETCH;
+            else if (strncmp(cmd, "orton", 5) == 0) {
+                filter_type = FILTER_ORTON;
                 filter_radius = 1;
                 update_requested = 1;
             }

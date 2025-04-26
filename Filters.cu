@@ -21,7 +21,7 @@ void draw_rgb(Display *display, Window win, GC gc, Visual *visual, int depth, un
             unsigned char g = rgb_data[i + 1];
             unsigned char b = rgb_data[i + 2];
             unsigned int pixel = (r << 16) | (g << 8) | b;
-            ((unsigned int *)img->data)[y * w + x] = pixel;
+            ((unsigned int *)img->data)[y * w + x] = pixel; // XRGB
         }
     }
     XPutImage(display, win, gc, img, 0, 0, x_offset, 0, w, h);

@@ -14,6 +14,7 @@ GPU-accelerated image filtering project using CUDA on WSL2. This project impleme
    - Brightness & Contrast Adjustments (Orton)  
    - Inversion (Negative)  
 
+![optimize](https://github.com/user-attachments/assets/8bb1d296-bf2e-42c8-b3bd-fe379700c475)
 
 
 ## 🚀 Setting Up CUDA on WSL  

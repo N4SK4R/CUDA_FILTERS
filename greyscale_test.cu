@@ -48,7 +48,7 @@ void draw_grayscale(Display *display, Window win, GC gc, Visual *visual, int dep
 int main() {
 
     int width, height, channels;
-    unsigned char *img_data = stbi_load("images/test1.jpg", &width, &height, &channels, 1);
+    unsigned char *img_data = stbi_load("images/test.jpg", &width, &height, &channels, 1);
     if (!img_data) {
         fprintf(stderr, "Failed to load image.\n");
         return 1;
